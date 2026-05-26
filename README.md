@@ -1,1 +1,1 @@
-# fit-erp-system
+# FitERP - Spor Salonu Yönetim Sistemi
