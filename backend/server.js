@@ -23,8 +23,56 @@ db.getConnection((err, connection) => {
   } else {
     console.log("MySQL bağlantısı başarılı (Havuz oluşturuldu)");
     connection.release();
+    initializePMTables();
   }
 });
+
+const initializePMTables = () => {
+  const createTeamTable = `
+    CREATE TABLE IF NOT EXISTS pm_team (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      full_name VARCHAR(255) NOT NULL,
+      role VARCHAR(255),
+      email VARCHAR(255)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `;
+  const createTasksTable = `
+    CREATE TABLE IF NOT EXISTS pm_tasks (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      start_date DATE,
+      duration_days INT DEFAULT 1,
+      progress INT DEFAULT 0,
+      assignee_id INT,
+      dependencies VARCHAR(255),
+      FOREIGN KEY (assignee_id) REFERENCES pm_team(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `;
+  const createBudgetTable = `
+    CREATE TABLE IF NOT EXISTS pm_budget (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      type ENUM('income', 'expense') NOT NULL,
+      category VARCHAR(255) NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      date DATE,
+      description TEXT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `;
+  
+  db.query(createTeamTable, (err) => {
+    if (err) console.error("pm_team tablosu oluşturulurken hata:", err);
+    else {
+      db.query(createTasksTable, (err) => {
+        if (err) console.error("pm_tasks tablosu oluşturulurken hata:", err);
+      });
+    }
+  });
+  
+  db.query(createBudgetTable, (err) => {
+    if (err) console.error("pm_budget tablosu oluşturulurken hata:", err);
+  });
+};
 
 // ─────────────────────────────────────────────
 // GENEL
@@ -387,6 +435,139 @@ app.get("/db/table/:name", (req, res) => {
         fields: fields ? fields.map(f => f.name) : []
       });
     });
+  });
+});
+
+// ─────────────────────────────────────────────
+// PROJECT MANAGEMENT ENDPOINTS
+// ─────────────────────────────────────────────
+
+// TEAM CRUD
+app.get("/pm/team", (req, res) => {
+  db.query("SELECT * FROM pm_team ORDER BY id DESC", (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+app.post("/pm/team", (req, res) => {
+  const sql = "INSERT INTO pm_team (full_name, role, email) VALUES (?, ?, ?)";
+  const values = [req.body.full_name, req.body.role, req.body.email];
+  db.query(sql, values, (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Ekip üyesi eklendi", id: result.insertId });
+  });
+});
+
+app.put("/pm/team/:id", (req, res) => {
+  const sql = "UPDATE pm_team SET full_name=?, role=?, email=? WHERE id=?";
+  const values = [req.body.full_name, req.body.role, req.body.email, req.params.id];
+  db.query(sql, values, (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Ekip üyesi güncellendi" });
+  });
+});
+
+app.delete("/pm/team/:id", (req, res) => {
+  db.query("DELETE FROM pm_team WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Ekip üyesi silindi" });
+  });
+});
+
+// TASKS CRUD
+app.get("/pm/tasks", (req, res) => {
+  db.query("SELECT * FROM pm_tasks ORDER BY start_date ASC", (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+app.post("/pm/tasks", (req, res) => {
+  const sql = "INSERT INTO pm_tasks (name, description, start_date, duration_days, progress, assignee_id, dependencies) VALUES (?, ?, ?, ?, ?, ?, ?)";
+  const values = [
+    req.body.name,
+    req.body.description,
+    req.body.start_date || null,
+    req.body.duration_days || 1,
+    req.body.progress || 0,
+    req.body.assignee_id || null,
+    req.body.dependencies || ""
+  ];
+  db.query(sql, values, (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Görev eklendi", id: result.insertId });
+  });
+});
+
+app.put("/pm/tasks/:id", (req, res) => {
+  const sql = "UPDATE pm_tasks SET name=?, description=?, start_date=?, duration_days=?, progress=?, assignee_id=?, dependencies=? WHERE id=?";
+  const values = [
+    req.body.name,
+    req.body.description,
+    req.body.start_date || null,
+    req.body.duration_days || 1,
+    req.body.progress || 0,
+    req.body.assignee_id || null,
+    req.body.dependencies || "",
+    req.params.id
+  ];
+  db.query(sql, values, (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Görev güncellendi" });
+  });
+});
+
+app.delete("/pm/tasks/:id", (req, res) => {
+  db.query("DELETE FROM pm_tasks WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Görev silindi" });
+  });
+});
+
+// BUDGET CRUD
+app.get("/pm/budget", (req, res) => {
+  db.query("SELECT * FROM pm_budget ORDER BY date DESC", (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json(result);
+  });
+});
+
+app.post("/pm/budget", (req, res) => {
+  const sql = "INSERT INTO pm_budget (type, category, amount, date, description) VALUES (?, ?, ?, ?, ?)";
+  const values = [
+    req.body.type,
+    req.body.category,
+    req.body.amount,
+    req.body.date || null,
+    req.body.description
+  ];
+  db.query(sql, values, (err, result) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Bütçe hareketi eklendi", id: result.insertId });
+  });
+});
+
+app.put("/pm/budget/:id", (req, res) => {
+  const sql = "UPDATE pm_budget SET type=?, category=?, amount=?, date=?, description=? WHERE id=?";
+  const values = [
+    req.body.type,
+    req.body.category,
+    req.body.amount,
+    req.body.date || null,
+    req.body.description,
+    req.params.id
+  ];
+  db.query(sql, values, (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Bütçe hareketi güncellendi" });
+  });
+});
+
+app.delete("/pm/budget/:id", (req, res) => {
+  db.query("DELETE FROM pm_budget WHERE id=?", [req.params.id], (err) => {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Bütçe hareketi silindi" });
   });
 });
 

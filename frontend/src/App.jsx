@@ -8,6 +8,8 @@ import Trainers from "./pages/Trainers";
 import Payments from "./pages/Payments";
 import Packages from "./pages/Packages";
 import DatabaseManager from "./pages/DatabaseManager";
+import ProjectManagement from "./pages/ProjectManagement";
+import { FEATURE_FLAGS } from "./config";
 
 function App() {
   return (
@@ -20,6 +22,9 @@ function App() {
           <Route path="/payments" element={<Payments />} />
           <Route path="/packages" element={<Packages />} />
           <Route path="/db-manager" element={<DatabaseManager />} />
+          {FEATURE_FLAGS.SHOW_PROJECT_MANAGEMENT && (
+            <Route path="/project-management" element={<ProjectManagement />} />
+          )}
         </Routes>
       </MainLayout>
     </BrowserRouter>
