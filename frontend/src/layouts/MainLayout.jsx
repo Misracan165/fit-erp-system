@@ -26,6 +26,10 @@ function MainLayout({ children }) {
           <li>
             <NavLink to="/packages">Paketler</NavLink>
           </li>
+
+          <li>
+            <NavLink to="/db-manager">Veritabanı Paneli</NavLink>
+          </li>
         </ul>
       </aside>
 

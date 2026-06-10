@@ -7,6 +7,7 @@ import Members from "./pages/Members";
 import Trainers from "./pages/Trainers";
 import Payments from "./pages/Payments";
 import Packages from "./pages/Packages";
+import DatabaseManager from "./pages/DatabaseManager";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/trainers" element={<Trainers />} />
           <Route path="/payments" element={<Payments />} />
           <Route path="/packages" element={<Packages />} />
+          <Route path="/db-manager" element={<DatabaseManager />} />
         </Routes>
       </MainLayout>
     </BrowserRouter>

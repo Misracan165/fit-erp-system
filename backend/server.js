@@ -238,6 +238,159 @@ app.delete("/payments/:id", (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// DATABASE MANAGER ENDPOINTS
+// ─────────────────────────────────────────────
+app.get("/db/schema", (req, res) => {
+  const colsSql = `
+    SELECT table_name, column_name, data_type, is_nullable, column_key
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+    ORDER BY table_name, ordinal_position
+  `;
+  
+  const fkSql = `
+    SELECT table_name, column_name, referenced_table_name, referenced_column_name
+    FROM information_schema.key_column_usage
+    WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL
+  `;
+  
+  db.query(colsSql, (err, colsResult) => {
+    if (err) return res.status(500).json({ error: err.message });
+    
+    db.query(fkSql, (err, fkResult) => {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      const fkMap = {};
+      fkResult.forEach(fk => {
+        const tName = fk.TABLE_NAME || fk.table_name;
+        const cName = fk.COLUMN_NAME || fk.column_name;
+        const refTName = fk.REFERENCED_TABLE_NAME || fk.referenced_table_name;
+        const refCName = fk.REFERENCED_COLUMN_NAME || fk.referenced_column_name;
+        fkMap[`${tName}.${cName}`] = `${refTName}.${refCName}`;
+      });
+      
+      const schema = {};
+      colsResult.forEach(col => {
+        const tbl = col.TABLE_NAME || col.table_name;
+        const colName = col.COLUMN_NAME || col.column_name;
+        const dataType = col.DATA_TYPE || col.data_type;
+        const isNullable = col.IS_NULLABLE || col.is_nullable;
+        const colKey = col.COLUMN_KEY || col.column_key;
+        
+        if (!schema[tbl]) {
+          schema[tbl] = {
+            name: tbl,
+            cols: []
+          };
+        }
+        
+        const colInfo = {
+          name: colName,
+          type: dataType.toUpperCase(),
+          pk: colKey === 'PRI',
+          nn: isNullable === 'NO'
+        };
+        
+        const fkKey = `${tbl}.${colName}`;
+        if (fkMap[fkKey]) {
+          colInfo.fk = fkMap[fkKey];
+        }
+        
+        schema[tbl].cols.push(colInfo);
+      });
+      
+      res.json(schema);
+    });
+  });
+});
+
+app.get("/db/stats", (req, res) => {
+  const tablesSql = `
+    SELECT table_name, (data_length + index_length) AS size_bytes
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
+  `;
+  
+  db.query(tablesSql, async (err, tables) => {
+    if (err) return res.status(500).json({ error: err.message });
+    
+    try {
+      const stats = [];
+      const countRow = (tableName) => {
+        return new Promise((resolve) => {
+          db.query(`SELECT COUNT(*) AS count FROM \`${tableName}\``, (err, result) => {
+            if (err) resolve(0);
+            else resolve(result[0].count);
+          });
+        });
+      };
+      
+      for (const t of tables) {
+        const name = t.table_name || t.TABLE_NAME;
+        const size = t.size_bytes || t.SIZE_BYTES || 0;
+        const rows = await countRow(name);
+        stats.push({
+          name,
+          rows,
+          size_bytes: size
+        });
+      }
+      
+      res.json(stats);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+});
+
+app.post("/db/query", (req, res) => {
+  const { sql } = req.body;
+  if (!sql) return res.status(400).json({ error: "Sorgu boş olamaz." });
+  
+  const start = process.hrtime();
+  
+  db.query(sql, (err, results, fields) => {
+    const diff = process.hrtime(start);
+    const timeMs = (diff[0] * 1000 + diff[1] / 1000000).toFixed(2);
+    
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    
+    const isMutation = !Array.isArray(results);
+    
+    res.json({
+      results,
+      fields: fields ? fields.map(f => f.name) : null,
+      timeMs,
+      isMutation
+    });
+  });
+});
+
+app.get("/db/table/:name", (req, res) => {
+  const tableName = req.params.name;
+  const checkSql = `
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = DATABASE() AND table_name = ? AND table_type = 'BASE TABLE'
+  `;
+  
+  db.query(checkSql, [tableName], (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (results.length === 0) return res.status(404).json({ error: "Tablo bulunamadı." });
+    
+    db.query(`SELECT * FROM \`${tableName}\` LIMIT 100`, (err, rows, fields) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({
+        rows,
+        fields: fields ? fields.map(f => f.name) : []
+      });
+    });
+  });
+});
+
+// ─────────────────────────────────────────────
 // SERVER
 // ─────────────────────────────────────────────
 app.listen(5000, () => {
