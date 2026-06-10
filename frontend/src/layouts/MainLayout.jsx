@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { FEATURE_FLAGS } from "../config";
 
 function MainLayout({ children }) {
   return (
@@ -26,6 +27,16 @@ function MainLayout({ children }) {
           <li>
             <NavLink to="/packages">Paketler</NavLink>
           </li>
+
+          <li>
+            <NavLink to="/db-manager">Veritabanı Paneli</NavLink>
+          </li>
+
+          {FEATURE_FLAGS.SHOW_PROJECT_MANAGEMENT && (
+            <li>
+              <NavLink to="/project-management">Proje Yönetimi</NavLink>
+            </li>
+          )}
         </ul>
       </aside>
 
