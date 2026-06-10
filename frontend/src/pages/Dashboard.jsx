@@ -1,174 +1,144 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import StatCard from "../components/StatCard";
 
 function Dashboard() {
   const [members, setMembers] = useState([]);
-
-  const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    phone: "",
-    membership_type: "",
-    start_date: "",
-  });
-  
-  const [editingId, setEditingId] = useState(null);
+  const [payments, setPayments] = useState([]);
 
   const fetchMembers = () => {
     fetch("http://localhost:5000/members")
       .then((res) => res.json())
       .then((data) => {
         setMembers(data);
-      });
+      })
+      .catch((err) => console.error("Üyeler yüklenirken hata oluştu:", err));
+  };
+
+  const fetchPayments = () => {
+    fetch("http://localhost:5000/payments")
+      .then((res) => res.json())
+      .then((data) => {
+        setPayments(data);
+      })
+      .catch((err) => console.error("Ödemeler yüklenirken hata oluştu:", err));
   };
 
   useEffect(() => {
     fetchMembers();
+    fetchPayments();
   }, []);
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+  const totalRevenue = payments.reduce(
+    (sum, payment) => sum + Number(payment.amount),
+    0
+  );
+
+  // Get recent 5 members
+  const recentMembers = [...members]
+    .sort((a, b) => b.id - a.id)
+    .slice(0, 5);
+
+  // Get recent 5 payments
+  const recentPayments = [...payments]
+    .sort((a, b) => b.id - a.id)
+    .slice(0, 5);
+
+  // Helper to map member ID to name
+  const getMemberName = (memberId) => {
+    const found = members.find((m) => m.id === memberId);
+    return found ? found.full_name : `Üye #${memberId}`;
   };
 
-
-  const handleSubmit = async (e) => {
-  e.preventDefault();
-
-  if (editingId) {
-    await fetch(`http://localhost:5000/members/${editingId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(formData),
-    });
-  } else {
-    await fetch("http://localhost:5000/members", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(formData),
-    });
-  }
-
-  setFormData({
-    full_name: "",
-    email: "",
-    phone: "",
-    membership_type: "",
-    start_date: "",
-  });
-
-  setEditingId(null);
-
-  fetchMembers();
-};
-
-  const deleteMember = async (id) => {
-  await fetch(`http://localhost:5000/members/${id}`, {
-    method: "DELETE",
-  });
-
-  fetchMembers();
-};
-
-  const editMember = (member) => {
-  setFormData({
-    full_name: member.full_name,
-    email: member.email,
-    phone: member.phone,
-    membership_type: member.membership_type,
-    start_date: member.start_date?.split("T")[0] || "",
-  });
-
-  setEditingId(member.id);
-};
+  const formatDate = (dateString) => {
+    if (!dateString) return "-";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("tr-TR");
+  };
 
   return (
-    <div>
-      <h1>Dashboard</h1>
+    <div className="dashboard-page animate-fade-in">
+      <div className="page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p className="subtitle">Spor salonunuzun genel durumu ve özet verileri</p>
+        </div>
+      </div>
 
       <div className="card-container">
-        <StatCard title="Toplam Üye" value={members.length} />
-        <StatCard title="Eğitmen Sayısı" value="8" />
-        <StatCard title="Aktif Abonelik" value="95" />
-        <StatCard title="Aylık Gelir" value="₺45.000" />
+        <StatCard title="Toplam Üye" value={members.length} icon="users" />
+        <StatCard title="Eğitmen Sayısı" value="8" icon="trainers" />
+        <StatCard title="Ödeme Sayısı" value={payments.length} icon="payments" />
+        <StatCard title="Toplam Gelir" value={`₺${totalRevenue.toLocaleString("tr-TR")}`} icon="revenue" />
       </div>
 
-      <div className="form-container">
-        <h2>Yeni Üye Ekle</h2>
-
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            name="full_name"
-            placeholder="Ad Soyad"
-            value={formData.full_name}
-            onChange={handleChange}
-          />
-
-          <input
-            type="email"
-            name="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-          />
-
-          <input
-            type="text"
-            name="phone"
-            placeholder="Telefon"
-            value={formData.phone}
-            onChange={handleChange}
-          />
-
-          <input
-            type="text"
-            name="membership_type"
-            placeholder="Üyelik Türü"
-            value={formData.membership_type}
-            onChange={handleChange}
-          />
-
-          <input
-            type="date"
-            name="start_date"
-            value={formData.start_date}
-            onChange={handleChange}
-          />
-
-          <button type="submit">
-  {editingId ? "Üye Güncelle" : "Üye Ekle"}
-</button>
-        </form>
-      </div>
-
-      <h2 style={{ marginTop: "40px" }}>Üyeler</h2>
-
-      {members.map((member) => (
-       <div key={member.id} className="member-card">
-         <p><strong>Ad:</strong> {member.full_name}</p>
-         <p><strong>Üyelik:</strong> {member.membership_type}</p>
-         <button
-  onClick={() => editMember(member)}
->
-  Düzenle
-</button>
-         <button
-           className="delete-btn"
-           onClick={() => deleteMember(member.id)}
-         >
-           Üyeyi Sil
-         </button>
+      <div className="dashboard-grid">
+        {/* Recent Members */}
+        <div className="dashboard-card recent-members-card">
+          <div className="card-header">
+            <h2>Son Kaydolan Üyeler</h2>
+            <Link to="/members" className="btn btn-text">
+              Tümünü Gör →
+            </Link>
+          </div>
+          <div className="card-body">
+            {recentMembers.length > 0 ? (
+              <ul className="recent-list">
+                {recentMembers.map((member) => (
+                  <li key={member.id} className="recent-item">
+                    <div className="item-left">
+                      <div className="avatar">
+                        {member.full_name ? member.full_name.charAt(0).toUpperCase() : "U"}
+                      </div>
+                      <div className="item-info">
+                        <span className="item-title">{member.full_name}</span>
+                        <span className="item-subtitle">{member.membership_type || "Standart"}</span>
+                      </div>
+                    </div>
+                    <span className="item-date">{formatDate(member.start_date)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-text">Kayıtlı üye bulunmuyor.</p>
+            )}
+          </div>
         </div>
-      ))}
+
+        {/* Recent Payments */}
+        <div className="dashboard-card recent-payments-card">
+          <div className="card-header">
+            <h2>Son Ödemeler</h2>
+            <Link to="/payments" className="btn btn-text">
+              Tümünü Gör →
+            </Link>
+          </div>
+          <div className="card-body">
+            {recentPayments.length > 0 ? (
+              <ul className="recent-list">
+                {recentPayments.map((payment) => (
+                  <li key={payment.id} className="recent-item">
+                    <div className="item-left">
+                      <div className="payment-icon">₺</div>
+                      <div className="item-info">
+                        <span className="item-title">{getMemberName(payment.member_id)}</span>
+                        <span className="item-subtitle">{formatDate(payment.payment_date)}</span>
+                      </div>
+                    </div>
+                    <span className="payment-amount positive">
+                      +₺{Number(payment.amount).toLocaleString("tr-TR")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-text">Kayıtlı ödeme bulunmuyor.</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
-  ); 
+  );
 }
 
 export default Dashboard;

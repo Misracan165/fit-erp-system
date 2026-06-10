@@ -1,3 +1,5 @@
+import { NavLink } from "react-router-dom";
+
 function MainLayout({ children }) {
   return (
     <div className="layout">
@@ -5,11 +7,25 @@ function MainLayout({ children }) {
         <h2>FitERP</h2>
 
         <ul>
-          <li>Dashboard</li>
-          <li>Üyeler</li>
-          <li>Eğitmenler</li>
-          <li>Ödemeler</li>
-          <li>Antrenmanlar</li>
+          <li>
+            <NavLink to="/">Dashboard</NavLink>
+          </li>
+
+          <li>
+            <NavLink to="/members">Üyeler</NavLink>
+          </li>
+
+          <li>
+            <NavLink to="/trainers">Eğitmenler</NavLink>
+          </li>
+
+          <li>
+            <NavLink to="/payments">Ödemeler</NavLink>
+          </li>
+
+          <li>
+            <NavLink to="/packages">Paketler</NavLink>
+          </li>
         </ul>
       </aside>
 
