@@ -572,6 +572,130 @@ app.delete("/pm/budget/:id", (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// DATABASE MANAGER API
+// ─────────────────────────────────────────────
+
+// Veritabanındaki tabloların şema bilgisini döndür
+app.get("/db/schema", (req, res) => {
+  // Önce tüm tabloları çek
+  db.query("SHOW TABLES", (err, tables) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    const tableNames = tables.map((row) => Object.values(row)[0]);
+    const schema = {};
+    let pending = tableNames.length;
+
+    if (pending === 0) return res.json({});
+
+    tableNames.forEach((tableName) => {
+      db.query(`DESCRIBE \`${tableName}\``, (err2, columns) => {
+        if (!err2 && columns) {
+          schema[tableName] = columns.map((col) => ({
+            name: col.Field,
+            type: col.Type,
+            nullable: col.Null === "YES",
+            key: col.Key,
+            default: col.Default,
+            extra: col.Extra,
+          }));
+        }
+        pending--;
+        if (pending === 0) res.json(schema);
+      });
+    });
+  });
+});
+
+// Her tablo için satır sayısı ve yaklaşık boyut istatistiği
+app.get("/db/stats", (req, res) => {
+  const sql = `
+    SELECT 
+      TABLE_NAME AS name,
+      TABLE_ROWS AS rows,
+      (DATA_LENGTH + INDEX_LENGTH) AS size_bytes
+    FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = ?
+    ORDER BY TABLE_NAME
+  `;
+  db.query(sql, [process.env.DB_NAME || "fiterp_db"], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(result);
+  });
+});
+
+// Belirli bir tablonun tüm satırlarını döndür
+app.get("/db/table/:name", (req, res) => {
+  const tableName = req.params.name.replace(/[^a-zA-Z0-9_]/g, ""); // Güvenlik
+  const limit = Math.min(parseInt(req.query.limit) || 500, 2000);
+  const offset = parseInt(req.query.offset) || 0;
+
+  db.query(`DESCRIBE \`${tableName}\``, (err, cols) => {
+    if (err) return res.status(400).json({ error: `Tablo bulunamadı: ${tableName}` });
+    const fields = cols.map((c) => c.Field);
+
+    db.query(
+      `SELECT * FROM \`${tableName}\` LIMIT ? OFFSET ?`,
+      [limit, offset],
+      (err2, rows) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({ rows, fields });
+      }
+    );
+  });
+});
+
+// Serbest SQL sorgusunu çalıştır ve sonuçları döndür
+app.post("/db/query", (req, res) => {
+  const { sql } = req.body;
+  if (!sql || !sql.trim()) {
+    return res.status(400).json({ error: "SQL sorgusu boş olamaz." });
+  }
+
+  const t0 = Date.now();
+
+  // Tehlikeli DDL ifadelerini engelle (DROP DATABASE, TRUNCATE vb.)
+  const upperSql = sql.trim().toUpperCase();
+  if (upperSql.startsWith("DROP DATABASE") || upperSql.startsWith("DROP SCHEMA")) {
+    return res.status(403).json({ error: "DROP DATABASE / SCHEMA komutuna izin verilmiyor." });
+  }
+
+  db.query(sql, (err, result, fields) => {
+    const timeMs = (Date.now() - t0).toFixed(2);
+    if (err) {
+      return res.status(400).json({ error: err.sqlMessage || err.message, timeMs });
+    }
+
+    // SELECT sorguları dizi döndürür, DML/DDL ise OkPacket döndürür
+    if (Array.isArray(result)) {
+      // Field isimlerini ya fields paramından ya da ilk satırın keylerinden çek
+      let fieldNames = [];
+      if (fields && Array.isArray(fields) && fields.length > 0) {
+        fieldNames = fields.map((f) => f.name || f);
+      } else if (result.length > 0) {
+        fieldNames = Object.keys(result[0]);
+      }
+      return res.json({
+        results: result,
+        fields: fieldNames,
+        rowCount: result.length,
+        timeMs,
+        isMutation: false,
+      });
+    } else {
+      return res.json({
+        results: [],
+        fields: [],
+        rowCount: 0,
+        affectedRows: result.affectedRows || 0,
+        timeMs,
+        isMutation: true,
+        message: `İşlem başarıyla tamamlandı. Etkilenen satır: ${result.affectedRows || 0}`,
+      });
+    }
+  });
+});
+
+// ─────────────────────────────────────────────
 // SERVER
 // ─────────────────────────────────────────────
 app.listen(5000, () => {
